@@ -22,21 +22,6 @@ plt.rc("font", family="sans-serif")
 plt.rc("font", size=14)     
 
 
-def stationary(res):
-    X= res.values
-    result = adfuller(X)
-    print('ADF Statistic: %f' % result[0])
-    print('p-value: %f' % result[1])
-    print('Critical Values:')
-    for key, value in result[4].items():
-        print('\t%s: %.3f' % (key, value))
-
-    if result[0] < result[4]["5%"]:
-        print ("Reject Ho - Time Series is Stationary")
-    else:
-        print ("Failed to Reject Ho - Time Series is Non-Stationary")
-
-
 def garch(res):
     res.dropna(inplace=True)
     garch = arch_model(res['return'], mean='zero', vol='GARCH', p=1, o=0, q=1)\
@@ -59,6 +44,19 @@ def garch(res):
     normal_volatility = garch.conditional_volatility
     skewt_volatility = skewt_result.conditional_volatility
     skewt_resid = skewt_result.resid/skewt_volatility
+    def goodness_of_fit():
+        #global df
+        model_names = ['normal', 'skewt']
+        models = [garch, skewt_result]
+        likelihood = [model.loglikelihood for model in models]
+        aic = [model.aic for model in models]
+        bic = [model.bic for model in models]
+        dict = {'model':model_names, 'log likelihood':likelihood, 'aic':aic,'bic':bic}
+        df = pd.DataFrame(dict).set_index('model')
+        return df
+
+    goodness_of_fit()
+    
 
     # Plot model fitting results
     plt.figure(figsize=(12,6))
@@ -68,7 +66,8 @@ def garch(res):
     plt.legend(loc = 'upper right', frameon=False)
     plt.show()
 
-
+    plot_acf(skewt_resid, alpha=0.05)
+    plt.show()
 
 
     daily_volatility = res['return'].std()
@@ -116,7 +115,7 @@ def garch(res):
 
   ###actual volitiliy from garch Variance from model
     actual_var = skewt_result.conditional_volatility ** 2 
-    actual_var = actual_var['2020-01-07':'2020-02-19']
+    actual_var = actual_var['2018-01-07':'2018-02-19']
     print(forecast_var_fixed)
     actual_var, forecast_var_fixed = np.array(actual_var), np.array(forecast_var_fixed["h.1"])
     print(actual_var)
@@ -131,28 +130,28 @@ def garch(res):
         mse = mean_squared_error(observation, forecast)
         print('Mean Squared Error (MSE): {:.3g}'.format(mse))
 
-        # MAPE: not in scikitlearn, let's calculate it ourselves
+        
         mape = np.mean(np.abs((observation - forecast) / observation)) * 100
         print('Mean Absolute Percentage Error (MAPE): {:.3g}'.format(mape))
     
         return mae, mse, mape
 
 # Backtest model with MAE, MSE
-    evaluate(actual_var, forecast_var_fixed)
+    #evaluate(actual_var, forecast_var_fixed)
 
     nu = skewt_result.params[3]
 
 # t distribution skew (lambda)
     lam = skewt_result.params[4]
 
-# Forecast from 2020-01-01 onward 
-    #start_loc = df[df['Date']=='02-01-2020'].index
+# Forecast from 2018-01-01 onward 
+    #start_loc = df[df['Date']=='02-01-2018'].index
     #print(start_loc)
-    garch_forecast = skewt_result.forecast(start='2020-01-01')
+    garch_forecast = skewt_result.forecast(start='2018-01-01')
 
 # Forecast mean and variance 
-    mean_forecast = garch_forecast.mean['2020-01-01':]
-    variance_forecast = garch_forecast.variance['2020-01-01':]
+    mean_forecast = garch_forecast.mean['2018-01-01':]
+    variance_forecast = garch_forecast.variance['2018-01-01':]
 
     # Parametric quantile, 2nd argument of .ppf must be in an array form
     q_parametric = skewt_gm.distribution.ppf(0.05, [nu, lam])
@@ -174,13 +173,16 @@ def garch(res):
     plt.figure(figsize=(12,7))
     plt.plot(VaR_parametric, color = 'salmon', label = '5% Parametric VaR', alpha=0.7)
     plt.plot(VaR_empirical, color = 'gold', label = '5% Empirical VaR', alpha=0.7)
+    
     df['date'] = pd.to_datetime(df['Date'], format='%Y-%m-%d')
-    filtered_df = df.loc[(df['date'] >= '2020-01-01')]
+    filtered_df = df.loc[(df['date'] >= '2018-01-01')]
     print(filtered_df.index.size)
     filtered_df['Date'] = pd.to_datetime(df['Date'])
     filtered_df.set_index('Date', inplace=True)
     print(filtered_df['return'])
     print(VaR_empirical['5%'])
+    t = np.where(filtered_df['return'] < VaR_empirical['5%'])
+    print([len(e) for e in t])
     colors = np.where(filtered_df['return'] < VaR_empirical['5%'],'red','turquoise') # where return<VaR, point is dark red
     plt.scatter(variance_forecast.index, filtered_df['return'], color = colors, label = 'FCX Returns')
     plt.legend(loc = 'upper right', frameon=False)
@@ -189,7 +191,7 @@ def garch(res):
     plt.show()
     
 
-res = readData.read("DAX")
+res = readData.read("FCX")
 #stationary(res)
 
 garch(res)

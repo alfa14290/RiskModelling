@@ -45,7 +45,7 @@ def read(ticker):
 
     return ticker
 
-r = read('FCX')
+#r = read('FCX')
 
 
 
